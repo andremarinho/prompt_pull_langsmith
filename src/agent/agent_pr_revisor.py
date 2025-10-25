@@ -1,73 +1,61 @@
 from dotenv import load_dotenv
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
-from pathlib import Path
+from langsmith import Client
 import os
 import ssl
-import yaml
 
 load_dotenv()
 
-# Configuração SSL
-os.environ["GRPC_DEFAULT_SSL_ROOTS_FILE_PATH"] = "/home/andre.marinho/certs/nscacert.pem"
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # Inicializar LLM
 llm = ChatGoogleGenerativeAI(model=os.getenv("LLM_MODEL"), temperature=0.0)
 
 
-def load_prompt_from_yaml(version: str = None) -> PromptTemplate:
+def load_prompt_from_langsmith(prompt_name: str = None) -> PromptTemplate:
     """
-    Carrega o prompt versionado do arquivo YAML.
+    Carrega o prompt do LangSmith usando pull_prompt.
     
-    A versão é obtida da variável de ambiente PROMPT_VERSION.
-    Se não definida, usa 'v1.0.0' como padrão.
+    O nome do prompt pode ser fornecido como argumento ou através da 
+    variável de ambiente LANGSMITH_PROMPT_NAME.
+    Se não definido, usa 'prompt_padrao_pr_revisor' como padrão.
     
     Args:
-        version: Versão do prompt a ser carregada. Se None, usa variável de ambiente.
+        prompt_name: Nome do prompt no LangSmith. Se None, usa variável de ambiente.
         
     Returns:
-        PromptTemplate configurado com o template e variáveis do YAML
+        PromptTemplate carregado do LangSmith
         
     Raises:
-        FileNotFoundError: Se o arquivo de prompt não for encontrado
+        Exception: Se houver erro ao buscar o prompt do LangSmith
     """
-    # Obter versão da variável de ambiente ou usar padrão
-    if version is None:
-        version = os.getenv("PROMPT_VERSION", "v1.0.0")
+    # Obter nome do prompt da variável de ambiente ou usar padrão
+    if prompt_name is None:
+        prompt_name = os.getenv("LANGSMITH_PROMPT_NAME", "prompt_padrao_pr_revisor:ce5c6278")
     
-    # Caminho para o arquivo de prompt
-    project_root = Path(__file__).parent.parent.parent
-    prompt_file = project_root / "prompts" / version / "prompt.yaml"
-    
-    # Verificar se o arquivo existe
-    if not prompt_file.exists():
-        raise FileNotFoundError(
-            f"Arquivo de prompt não encontrado: {prompt_file}\n"
-            f"Versão solicitada: {version}\n"
-            f"Verifique se a variável PROMPT_VERSION está configurada corretamente."
+    try:
+        # Inicializar o client do LangSmith
+        client = Client()
+        
+        # Fazer pull do prompt do LangSmith
+        prompt = client.pull_prompt(prompt_name)
+        
+        print(f"✅ Prompt carregado com sucesso do LangSmith!")
+        print(f"   Nome: {prompt_name}")
+        
+        return prompt
+        
+    except Exception as e:
+        raise Exception(
+            f"Erro ao carregar prompt do LangSmith: {e}\n"
+            f"Prompt solicitado: {prompt_name}\n"
+            f"Verifique se o prompt existe no LangSmith e se as credenciais estão configuradas."
         )
-    
-    # Carregar o YAML
-    with open(prompt_file, 'r', encoding='utf-8') as f:
-        prompt_config = yaml.safe_load(f)
-    
-    # Criar PromptTemplate
-    prompt = PromptTemplate(
-        input_variables=prompt_config['input_variables'],
-        template=prompt_config['template']
-    )
-    
-    print(f"✅ Prompt carregado com sucesso!")
-    print(f"   Versão: {version}")
-    print(f"   ID: {prompt_config.get('id', 'N/A')}")
-    print(f"   Variáveis: {prompt_config['input_variables']}")
-    
-    return prompt
 
 
-# Carregar o prompt versionado baseado na variável de ambiente
-prompt_template = load_prompt_from_yaml()
+# Carregar o prompt do LangSmith
+prompt_template = load_prompt_from_langsmith()
 
 
 def review_code(

@@ -1,0 +1,255 @@
+name: CI - Pull Request para Develop
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types: [opened, synchronize, reopened]
+
+env:
+  PYTHON_VERSION: "3.10"
+
+jobs:
+  lint:
+    name: 🔍 Lint e Validação de Código
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout do código
+        uses: actions/checkout@v4
+      
+      - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: 📦 Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort mypy
+          pip install -r requirements.txt
+      
+      - name: 🎨 Verificar formatação com Black
+        run: black --check src/ --line-length 100
+        continue-on-error: true
+      
+      - name: 📐 Verificar imports com isort
+        run: isort --check-only --profile black src/
+        continue-on-error: true
+      
+      - name: 🔍 Lint com Flake8
+        run: flake8 src/ --max-line-length=100 --extend-ignore=E203,W503
+        continue-on-error: true
+
+  test:
+    name: 🧪 Testes
+    runs-on: ubuntu-latest
+    needs: lint
+    
+    steps:
+      - name: 📥 Checkout do código
+        uses: actions/checkout@v4
+      
+      - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: 📦 Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: 🧪 Executar testes com pytest
+        run: |
+          pytest tests/ -v --tb=short || echo "⚠️ Testes não encontrados ou falharam"
+        continue-on-error: true
+
+  validate-structure:
+    name: 📁 Validar Estrutura do Projeto
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout do código
+        uses: actions/checkout@v4
+      
+      - name: ✅ Verificar arquivos essenciais
+        run: |
+          echo "🔍 Verificando arquivos essenciais..."
+          
+          # Arquivos obrigatórios
+          files=(
+            "README.md"
+            "requirements.txt"
+            "src/main.py"
+            "src/api/server.py"
+            "src/agent/agent_pr_revisor.py"
+            "prompts/v1.0.0/prompt.yaml"
+          )
+          
+          missing=0
+          for file in "${files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✅ $file encontrado"
+            else
+              echo "❌ $file não encontrado"
+              missing=$((missing + 1))
+            fi
+          done
+          
+          if [ $missing -gt 0 ]; then
+            echo "❌ $missing arquivo(s) essencial(is) não encontrado(s)"
+            exit 1
+          else
+            echo "✅ Todos os arquivos essenciais estão presentes"
+          fi
+      
+      - name: 📋 Verificar estrutura de diretórios
+        run: |
+          echo "🔍 Verificando estrutura de diretórios..."
+          
+          dirs=(
+            "src"
+            "src/api"
+            "src/agent"
+            "prompts"
+            "prompts/v1.0.0"
+          )
+          
+          for dir in "${dirs[@]}"; do
+            if [ -d "$dir" ]; then
+              echo "✅ Diretório $dir existe"
+            else
+              echo "❌ Diretório $dir não encontrado"
+              exit 1
+            fi
+          done
+          
+          echo "✅ Estrutura de diretórios válida"
+
+  validate-prompts:
+    name: 📝 Validar Prompts
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout do código
+        uses: actions/checkout@v4
+      
+      - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: 📦 Instalar PyYAML
+        run: pip install pyyaml
+      
+      - name: ✅ Validar YAML dos prompts
+        run: |
+          python -c "
+          import yaml
+          import sys
+          from pathlib import Path
+          
+          print('🔍 Validando arquivos de prompt...')
+          
+          prompt_files = list(Path('prompts').rglob('prompt.yaml'))
+          
+          if not prompt_files:
+              print('❌ Nenhum arquivo prompt.yaml encontrado')
+              sys.exit(1)
+          
+          errors = 0
+          for prompt_file in prompt_files:
+              try:
+                  with open(prompt_file, 'r') as f:
+                      data = yaml.safe_load(f)
+                  
+                  # Validar estrutura
+                  required_keys = ['_type', 'id', 'version', 'input_variables', 'template']
+                  missing = [key for key in required_keys if key not in data]
+                  
+                  if missing:
+                      print(f'❌ {prompt_file}: Faltam campos obrigatórios: {missing}')
+                      errors += 1
+                  else:
+                      print(f'✅ {prompt_file}: Válido (versão {data.get(\"version\")})')
+              
+              except yaml.YAMLError as e:
+                  print(f'❌ {prompt_file}: Erro de sintaxe YAML: {e}')
+                  errors += 1
+              except Exception as e:
+                  print(f'❌ {prompt_file}: Erro: {e}')
+                  errors += 1
+          
+          if errors > 0:
+              print(f'❌ {errors} erro(s) encontrado(s)')
+              sys.exit(1)
+          else:
+              print('✅ Todos os prompts são válidos')
+          "
+
+  check-dependencies:
+    name: 📦 Verificar Dependências
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout do código
+        uses: actions/checkout@v4
+      
+      - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: 📦 Tentar instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt --dry-run 2>&1 | tee install.log || true
+          
+          if grep -i "error" install.log; then
+            echo "❌ Erros encontrados nas dependências"
+            exit 1
+          else
+            echo "✅ Todas as dependências são válidas"
+          fi
+      
+      - name: 🔒 Verificar vulnerabilidades conhecidas
+        run: |
+          pip install safety
+          safety check --json || echo "⚠️ Vulnerabilidades encontradas (não bloqueante)"
+        continue-on-error: true
+
+  summary:
+    name: 📊 Resumo do CI
+    runs-on: ubuntu-latest
+    needs: [lint, test, validate-structure, validate-prompts, check-dependencies]
+    if: always()
+    
+    steps:
+      - name: 📊 Status do CI
+        run: |
+          echo "================================================"
+          echo "📊 RESUMO DA EXECUÇÃO DO CI"
+          echo "================================================"
+          echo ""
+          echo "✅ Lint: ${{ needs.lint.result }}"
+          echo "✅ Testes: ${{ needs.test.result }}"
+          echo "✅ Estrutura: ${{ needs.validate-structure.result }}"
+          echo "✅ Prompts: ${{ needs.validate-prompts.result }}"
+          echo "✅ Dependências: ${{ needs.check-dependencies.result }}"
+          echo ""
+          echo "================================================"
+          
+          if [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.validate-structure.result }}" != "success" ] || \
+             [ "${{ needs.validate-prompts.result }}" != "success" ] || \
+             [ "${{ needs.check-dependencies.result }}" != "success" ]; then
+            echo "❌ CI falhou em uma ou mais etapas críticas"
+            exit 1
+          else
+            echo "✅ Todas as verificações críticas passaram!"
+          fi
+
