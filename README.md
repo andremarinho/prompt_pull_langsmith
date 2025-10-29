@@ -40,7 +40,7 @@ Este projeto implementa um **Agente Revisor de Código Sênior** com inteligênc
 
 - ✅ API REST com FastAPI
 - ✅ Agente de IA usando LangChain + Google Gemini
-- ✅ Prompts versionados em YAML
+- ✅ Prompts gerenciados via LangSmith (pull_prompt)
 - ✅ Análise contextual configurável
 - ✅ Suporte a múltiplas linguagens
 - ✅ Resposta estruturada e detalhada
@@ -84,8 +84,9 @@ Crie um arquivo `.env` na raiz do projeto:
 LLM_MODEL=gemini-pro
 GOOGLE_API_KEY=sua-chave-google-ai-aqui
 
-# Versão do Prompt
-PROMPT_VERSION=v1.0.0
+# LangSmith - Pull do Prompt
+LANGSMITH_API_KEY=sua-chave-langsmith-aqui
+LANGSMITH_PROMPT_NAME=prompt_padrao_pr_revisor:ce5c6278
 
 # Servidor
 API_HOST=0.0.0.0
@@ -97,6 +98,19 @@ DEBUG=True
 1. Acesse [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. Crie uma nova API Key
 3. Copie e cole no arquivo `.env`
+
+**Como obter a LangSmith API Key:**
+1. Acesse [LangSmith](https://smith.langchain.com/)
+2. Crie uma conta ou faça login
+3. Vá em Settings > API Keys
+4. Crie uma nova API Key
+5. Copie e cole no arquivo `.env`
+
+**Configurar o Prompt no LangSmith:**
+- O sistema usa `client.pull_prompt()` para buscar o prompt do LangSmith
+- Configure o nome do prompt na variável `LANGSMITH_PROMPT_NAME`
+- O formato é: `nome_do_prompt:commit_hash` (ex: `prompt_padrao_pr_revisor:ce5c6278`)
+- Se não configurado, usa o prompt padrão definido no código
 
 > 📝 Veja mais detalhes em [ENV_CONFIG.md](ENV_CONFIG.md)
 
@@ -219,15 +233,11 @@ Informações básicas da API e endpoints disponíveis.
 ```
 ver_prompt_ia_project/
 ├── venv/                        # Ambiente virtual (não versionar)
-├── prompts/                     # Prompts versionados
-│   ├── README.md               # Documentação dos prompts
-│   └── v1.0.0/
-│       └── prompt.yaml         # Prompt do agente v1.0.0
 ├── src/                        # Código fonte
 │   ├── __init__.py
 │   ├── main.py                 # Script para iniciar servidor
 │   ├── agent/                  # Agente de IA
-│   │   └── agent_pr_revisor.py # Lógica do agente com LangChain
+│   │   └── agent_pr_revisor.py # Lógica do agente com LangChain + LangSmith
 │   └── api/                    # API REST
 │       ├── __init__.py
 │       ├── models.py           # Modelos Pydantic
@@ -236,6 +246,7 @@ ver_prompt_ia_project/
 ├── examples_curl.sh            # Exemplos com cURL
 ├── requirements.txt            # Dependências Python
 ├── ENV_CONFIG.md              # Documentação das variáveis de ambiente
+├── .env                        # Variáveis de ambiente (não versionar)
 ├── .gitignore
 └── README.md                   # Este arquivo
 ```
@@ -284,31 +295,35 @@ O prompt suporta as seguintes variáveis de contexto:
 - **FastAPI**: Framework web moderno e rápido
 - **Uvicorn**: Servidor ASGI de alta performance
 - **LangChain**: Framework para aplicações com LLM
+- **LangSmith**: Gerenciamento e versionamento de prompts
 - **Google Gemini**: Modelo de IA (via langchain-google-genai)
 - **Pydantic**: Validação de dados
-- **YAML**: Formato de prompts versionados
 
-## 📦 Versionamento de Prompts
+## 📦 Gerenciamento de Prompts com LangSmith
 
-Os prompts são versionados na pasta `prompts/` seguindo o padrão Semantic Versioning:
+Os prompts são gerenciados centralizadamente no **LangSmith** e carregados via `client.pull_prompt()`:
 
-```
-prompts/
-├── v1.0.0/     # Versão atual
-│   └── prompt.yaml
-├── v1.1.0/     # Versões futuras
-│   └── prompt.yaml
-└── README.md   # Documentação detalhada
-```
+### Como funciona:
 
-Para trocar de versão, basta alterar a variável de ambiente:
+1. **Prompts no LangSmith**: Os prompts são criados e versionados no LangSmith Hub
+2. **Pull do Prompt**: O sistema faz pull automático do prompt usando o LangSmith Client
+3. **Versionamento**: Cada prompt tem um commit hash único (ex: `ce5c6278`)
+4. **Configuração**: Define-se o prompt via variável de ambiente `LANGSMITH_PROMPT_NAME`
+
+### Para usar um prompt diferente:
 
 ```bash
-export PROMPT_VERSION=v1.1.0
+# Formato: nome_do_prompt:commit_hash
+export LANGSMITH_PROMPT_NAME=prompt_padrao_pr_revisor:ce5c6278
 python -m src.main
 ```
 
-> 📝 Veja a documentação completa em [prompts/README.md](prompts/README.md)
+### Vantagens:
+- ✅ Versionamento centralizado
+- ✅ Fácil rollback entre versões
+- ✅ Compartilhamento de prompts entre projetos
+- ✅ Histórico completo de mudanças
+- ✅ Colaboração em equipe
 
 ## 🧪 Testes
 
@@ -354,14 +369,17 @@ pip install -r requirements.txt
 echo "GOOGLE_API_KEY=sua-chave-aqui" >> .env
 ```
 
-### Erro: Prompt version not found
+### Erro: Falha ao carregar prompt do LangSmith
 
 ```bash
-# Verifique se a versão existe
-ls prompts/
+# Configure a chave do LangSmith no .env
+echo "LANGSMITH_API_KEY=sua-chave-aqui" >> .env
 
-# Use uma versão válida
-export PROMPT_VERSION=v1.0.0
+# Configure o nome do prompt
+echo "LANGSMITH_PROMPT_NAME=prompt_padrao_pr_revisor:ce5c6278" >> .env
+
+# Verifique se o prompt existe no LangSmith Hub
+# Acesse: https://smith.langchain.com/
 ```
 
 ## 📝 Logs
@@ -402,11 +420,11 @@ Este projeto está sob a licença MIT.
 Para dúvidas, problemas ou sugestões:
 - Consulte a documentação em `/docs`
 - Veja exemplos em `test_api.py` e `examples_curl.sh`
-- Leia a documentação dos prompts em `prompts/README.md`
+- Acesse seus prompts no [LangSmith Hub](https://smith.langchain.com/)
 - Verifique as variáveis de ambiente em `ENV_CONFIG.md`
 
 ---
 
-**Desenvolvido com ❤️ usando LangChain, Google Gemini e FastAPI**
+**Desenvolvido com ❤️ usando LangChain, LangSmith, Google Gemini e FastAPI**
 
 *Melhore a qualidade e segurança do seu código com análises inteligentes!*
